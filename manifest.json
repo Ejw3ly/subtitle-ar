@@ -1,0 +1,10 @@
+{
+  "id": "org.ai.arabic.phone.fixed",
+  "version": "1.0.1",
+  "name": "AI Arabic Phone Fixed",
+  "description": "ترجمات عربية ذكية - يجلب الجاهز وإن لم يوجد يترجم الإنجليزي بالذكاء الاصطناعي مجاناً مع Cache",
+  "types": ["movie", "series"],
+  "catalogs": [],
+  "resources": ["subtitles"],
+  "idPrefixes": ["tt"]
+}

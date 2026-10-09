@@ -6,37 +6,12 @@ const manifest = require("./manifest.json");
 
 const builder = new addonBuilder(manifest);
 const cache = new NodeCache({ stdTTL: 86400 });
-const TIMEOUT = 7000;
 const headers = { "User-Agent": "Mozilla/5.0" };
 
-async function fetchSafe(url, opts={}) {
-  try { const r = await axios.get(url, { headers, timeout: TIMEOUT, ...opts }); return r.data; } catch { return null; }
+async function fetchSafe(url) {
+  try { const r = await axios.get(url, { headers, timeout: 7000 }); return r.data; } catch { return null; }
 }
-async function translateGoogle(text){
-  try{
-    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ar&dt=t&q=${encodeURIComponent(text)}`;
-    const r = await axios.get(url, {timeout:5000});
-    return r.data[0].map(x=>x[0]).join(\'\');
-  }catch{ return null; }
-}
-async function translateSRT(srtText){
-  // تحميل متأخر حتى لا ينهار السيرفر عند طلب manifest.json
-  const SrtParser2 = require(\'srt-parser-2\');
-  const Parser = SrtParser2.default || SrtParser2;
-  const parser = new Parser();
-  const subs = parser.fromSrt(srtText);
-  let out = [];
-  for(let i=0; i<subs.length; i+=15){
-    let chunk = subs.slice(i, i+15);
-    let joint = chunk.map(c=>c.text).join(\'\n---\n\');
-    let trans = await translateGoogle(joint);
-    if(!trans) trans = joint;
-    let lines = trans.split(\'\n---\n\');
-    chunk.forEach((c,idx)=>{ c.text = lines[idx] || c.text; out.push(c); });
-    await new Promise(r=>setTimeout(r,300));
-  }
-  return parser.toSrt(out);
-}
+
 async function getYify(imdbId){
   const html = await fetchSafe(`https://yifysubtitles.ch/movie-imdb/${imdbId}`);
   if(!html) return [];
@@ -52,6 +27,7 @@ async function getYify(imdbId){
   });
   return subs;
 }
+
 async function getZipUrl(pageUrl){
   const html = await fetchSafe(pageUrl);
   if(!html) return null;
@@ -64,7 +40,7 @@ async function getZipUrl(pageUrl){
 builder.defineSubtitlesHandler(async ({id})=>{
   try{
     const imdbId = id.split(":")[0];
-    if(cache.has(imdbId)) return {subtitles: cache.get(imdbId)};
+    if(cache.has(imdbId)) return { subtitles: cache.get(imdbId) };
     const subs = await getYify(imdbId);
     for(let s of subs.filter(x=>x.lang==="ar")){
       const zipUrl = await getZipUrl(s.pageUrl);
@@ -86,30 +62,52 @@ builder.defineSubtitlesHandler(async ({id})=>{
 
 const addonInterface = builder.getInterface();
 
+// تصدير متوافق 100% مع Node 24
+let router;
+function getRouterSafe(){
+  if(router) return router;
+  const { getRouter } = require("stremio-addon-sdk/src/getRouter");
+  router = getRouter(addonInterface);
+  return router;
+}
+
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin","*");
-  res.setHeader("Access-Control-Allow-Headers","*");
-  if(req.url && req.url.includes("favicon")){ res.statusCode=204; return res.end(); }
+  if(req.url.includes("favicon")){ res.statusCode=204; return res.end(); }
 
   if(req.url && req.url.startsWith("/translate")){
     try{
       const AdmZip = require("adm-zip");
+      const SrtParser2 = require(\'srt-parser-2\');
+      const Parser = SrtParser2.default || SrtParser2;
+      const parser = new Parser();
       const url = new URL(req.url, `https://${req.headers.host}`);
       const zipUrl = url.searchParams.get("url");
-      if(!zipUrl) return res.status(400).end("missing url");
       const resp = await axios.get(zipUrl, {responseType:"arraybuffer", headers, timeout:8000});
       const zip = new AdmZip(Buffer.from(resp.data));
       const entry = zip.getEntries().find(e=>e.entryName.endsWith(".srt"));
       if(!entry) return res.status(404).end("no srt");
       const srtText = entry.getData().toString("utf8");
-      const translated = await translateSRT(srtText);
+      const subs = parser.fromSrt(srtText);
+      // ترجمة مجمعة سريعة
+      let out=[];
+      for(let i=0;i<subs.length;i+=15){
+        let chunk=subs.slice(i,i+15);
+        let joint=chunk.map(c=>c.text).join(\'\n---\n\');
+        let trans=null;
+        try{
+          const u=`https://translate.googleapis.com/translate_a/single?client=gtx&sl=en&tl=ar&dt=t&q=${encodeURIComponent(joint)}`;
+          const r=await axios.get(u,{timeout:5000});
+          trans=r.data[0].map(x=>x[0]).join(\'\');
+        }catch{}
+        if(!trans) trans=joint;
+        let lines=trans.split(\'\n---\n\');
+        chunk.forEach((c,idx)=>{c.text=lines[idx]||c.text; out.push(c);});
+      }
+      const translated=parser.toSrt(out);
       res.setHeader("Content-Type","text/plain; charset=utf-8");
       return res.end(translated);
-    }catch(e){ return res.status(500).end("translate error: "+e.message); }
+    }catch(e){ return res.status(500).end(e.message); }
   }
-
-  // هذا السطر هو الذي كان يسبب 500 لأنه في الأعلى - الآن صار داخل الطلب
-  const { getRouter } = require("stremio-addon-sdk/src/getRouter");
-  const router = getRouter(addonInterface);
-  return router(req, res, ()=>{ res.statusCode=404; res.end("not found"); });
+  return getRouterSafe()(req, res, ()=>{res.statusCode=404; res.end();});
 };

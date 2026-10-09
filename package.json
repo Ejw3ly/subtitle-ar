@@ -1,0 +1,15 @@
+{
+  "name": "stremio-ai-arabic",
+  "version": "1.0.0",
+  "main": "addon.js",
+  "scripts": { "start": "node addon.js" },
+  "dependencies": {
+    "stremio-addon-sdk": "^1.6.7",
+    "axios": "^1.6.7",
+    "cheerio": "^1.0.0-rc.12",
+    "node-cache": "^5.1.2",
+    "adm-zip": "^0.5.10",
+    "srt-parser-2": "^1.2.2"
+  },
+  "engines": { "node": "18.x" }
+}

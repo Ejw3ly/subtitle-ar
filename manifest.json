@@ -1,10 +1,10 @@
 {
-  "id": "org.ai.arabic.phone.fixed",
-  "version": "1.0.1",
-  "name": "AI Arabic Phone Fixed",
-  "description": "ترجمات عربية ذكية - يجلب الجاهز وإن لم يوجد يترجم الإنجليزي بالذكاء الاصطناعي مجاناً مع Cache",
+  "id": "org.subtitle.ar.final",
+  "version": "1.0.0",
+  "name": "Arabic Subs Final",
+  "description": "Arabic subtitles - Final stable version",
   "types": ["movie", "series"],
-  "catalogs": [],
   "resources": ["subtitles"],
+  "catalogs": [],
   "idPrefixes": ["tt"]
 }

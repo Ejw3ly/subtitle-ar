@@ -1,8 +1,6 @@
 {
-  "name": "stremio-ai-arabic",
+  "name": "subtitle-ar",
   "version": "1.0.0",
-  "main": "addon.js",
-  "scripts": { "start": "node addon.js" },
   "dependencies": {
     "stremio-addon-sdk": "^1.6.7",
     "axios": "^1.6.7",

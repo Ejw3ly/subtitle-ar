@@ -82,15 +82,13 @@ builder.defineSubtitlesHandler(async ({id})=>{
 });
 
 const addonInterface = builder.getInterface();
+const { getRouter } = require("stremio-addon-sdk/src/getRouter");
+const router = getRouter(addonInterface);
 
-// هذا هو الإصلاح لخطأ 500 - لا نستدعي getRouter في المستوى الأعلى
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin","*");
   res.setHeader("Access-Control-Allow-Headers","*");
-
-  // مهم للهاتف: تجاهل favicon
   if(req.url.includes("favicon")){ res.statusCode = 204; return res.end(); }
-
   if(req.url && req.url.startsWith("/translate")){
     try{
       const url = new URL(req.url, `https://${req.headers.host}`);
@@ -106,9 +104,5 @@ module.exports = async (req, res) => {
       return res.end(translated);
     }catch(e){ return res.status(500).end("translate error: "+e.message); }
   }
-
-  // باقي الطلبات لـ Stremio
-  const { getRouter } = require("stremio-addon-sdk/src/getRouter");
-  const router = getRouter(addonInterface);
   return router(req, res, ()=>{ res.statusCode=404; res.end("not found"); });
 };

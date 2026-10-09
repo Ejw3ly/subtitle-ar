@@ -2,7 +2,6 @@ const { addonBuilder } = require("stremio-addon-sdk");
 const axios = require("axios");
 const cheerio = require("cheerio");
 const NodeCache = require("node-cache");
-const AdmZip = require("adm-zip");
 const manifest = require("./manifest.json");
 
 const builder = new addonBuilder(manifest);
@@ -21,8 +20,10 @@ async function translateGoogle(text){
   }catch{ return null; }
 }
 async function translateSRT(srtText){
-  const SrtParser2 = require(\'srt-parser-2\').default;
-  const parser = new SrtParser2();
+  // تحميل متأخر حتى لا ينهار السيرفر عند طلب manifest.json
+  const SrtParser2 = require(\'srt-parser-2\');
+  const Parser = SrtParser2.default || SrtParser2;
+  const parser = new Parser();
   const subs = parser.fromSrt(srtText);
   let out = [];
   for(let i=0; i<subs.length; i+=15){
@@ -61,36 +62,38 @@ async function getZipUrl(pageUrl){
 }
 
 builder.defineSubtitlesHandler(async ({id})=>{
-  const imdbId = id.split(":")[0];
-  if(cache.has(imdbId)) return {subtitles: cache.get(imdbId)};
-  const subs = await getYify(imdbId);
-  for(let s of subs.filter(x=>x.lang==="ar")){
-    const zipUrl = await getZipUrl(s.pageUrl);
-    if(zipUrl){ const result=[{id:"ar-yify", url: zipUrl, lang:"ar", label:"Arabic - YIFY ✅"}]; cache.set(imdbId, result); return {subtitles: result}; }
-  }
-  const eng = subs.find(x=>x.isEnglish);
-  if(eng){
-    const zipUrl = await getZipUrl(eng.pageUrl);
-    if(zipUrl){
-      const host = `https://${process.env.VERCEL_URL || "subtitle-ar-79xn.vercel.app"}`;
-      const aiUrl = `${host}/translate?url=${encodeURIComponent(zipUrl)}`;
-      const result=[{id:"ai-ar", url: aiUrl, lang:"ar", label:"Arabic [AI Translated] ✨"}];
-      cache.set(imdbId, result); return {subtitles: result};
+  try{
+    const imdbId = id.split(":")[0];
+    if(cache.has(imdbId)) return {subtitles: cache.get(imdbId)};
+    const subs = await getYify(imdbId);
+    for(let s of subs.filter(x=>x.lang==="ar")){
+      const zipUrl = await getZipUrl(s.pageUrl);
+      if(zipUrl){ const result=[{id:"ar-yify", url: zipUrl, lang:"ar", label:"Arabic - YIFY ✅"}]; cache.set(imdbId, result); return {subtitles: result}; }
     }
-  }
-  return {subtitles:[]};
+    const eng = subs.find(x=>x.isEnglish);
+    if(eng){
+      const zipUrl = await getZipUrl(eng.pageUrl);
+      if(zipUrl){
+        const host = `https://${process.env.VERCEL_URL || "subtitle-ar-79xn.vercel.app"}`;
+        const aiUrl = `${host}/translate?url=${encodeURIComponent(zipUrl)}`;
+        const result=[{id:"ai-ar", url: aiUrl, lang:"ar", label:"Arabic [AI Translated] ✨"}];
+        cache.set(imdbId, result); return {subtitles: result};
+      }
+    }
+    return {subtitles:[]};
+  }catch(e){ return {subtitles:[]}; }
 });
 
 const addonInterface = builder.getInterface();
-const { getRouter } = require("stremio-addon-sdk/src/getRouter");
-const router = getRouter(addonInterface);
 
 module.exports = async (req, res) => {
   res.setHeader("Access-Control-Allow-Origin","*");
   res.setHeader("Access-Control-Allow-Headers","*");
-  if(req.url.includes("favicon")){ res.statusCode = 204; return res.end(); }
+  if(req.url && req.url.includes("favicon")){ res.statusCode=204; return res.end(); }
+
   if(req.url && req.url.startsWith("/translate")){
     try{
+      const AdmZip = require("adm-zip");
       const url = new URL(req.url, `https://${req.headers.host}`);
       const zipUrl = url.searchParams.get("url");
       if(!zipUrl) return res.status(400).end("missing url");
@@ -104,5 +107,9 @@ module.exports = async (req, res) => {
       return res.end(translated);
     }catch(e){ return res.status(500).end("translate error: "+e.message); }
   }
+
+  // هذا السطر هو الذي كان يسبب 500 لأنه في الأعلى - الآن صار داخل الطلب
+  const { getRouter } = require("stremio-addon-sdk/src/getRouter");
+  const router = getRouter(addonInterface);
   return router(req, res, ()=>{ res.statusCode=404; res.end("not found"); });
 };
